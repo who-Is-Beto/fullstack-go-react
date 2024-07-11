@@ -9,10 +9,11 @@ import (
 
 type Storage interface {
 	CreateUser(user *User) error
-	GetUser(id int) (*User, error)
+	GetUserById(id int) (*User, error)
 	GetUsers() ([]*User, error)
 	UpdateUser(user *User) error
 	DeleteUser(id int) error
+	GetUserByEmail(email string) (*User, error)
 }
 
 type PostgresStorage struct {
@@ -23,6 +24,8 @@ func (s *PostgresStorage) CreateUserTable() error {
 	query := `create table if not exists users (
 			id serial primary key,
 			username varchar(50),
+			email varchar(50),
+			password varchar(255),
 			createdAt timestamp,
 			updatedAt timestamp
 		)
@@ -39,10 +42,16 @@ func (s *PostgresStorage) Start() error {
 
 
 func (s *PostgresStorage) CreateUser(user *User) error {
-	query := `insert into users (username, createdAt, updatedAt)
-							values ($1, $2, $3)`
+	query := `insert into users (
+		username,
+		email,
+		password,
+		createdAt, 
+		updatedAt
+		)
+		values ($1, $2, $3, $4, $5)`
 
-	response, err := s.db.Query(query, user.Username, user.CreatedAt, user.UpdatedAt)
+	response, err := s.db.Query(query, user.Username, user.Email, user.Password, user.CreatedAt, user.UpdatedAt)
 	if err != nil {
 		return err
 	}
@@ -52,7 +61,7 @@ func (s *PostgresStorage) CreateUser(user *User) error {
 	return nil
 }
 
-func (s *PostgresStorage) GetUser(id int) (*User, error) {
+func (s *PostgresStorage) GetUserById(id int) (*User, error) {
 	rows, err := s.db.Query("select * from users where id = $1", id)
 	if err != nil {
 		return nil, err
@@ -63,6 +72,19 @@ func (s *PostgresStorage) GetUser(id int) (*User, error) {
 	}
 
 	return nil, fmt.Errorf("user with id %d not found", id)
+}
+
+func (s *PostgresStorage) GetUserByEmail(email string) (*User, error) {
+	rows, err := s.db.Query("select * from users where email = $1", email)
+	if err != nil {
+		return nil, err
+	}
+
+	for rows.Next() {
+		return scanIntoUser(rows)
+	}
+
+	return nil, fmt.Errorf("user with email %s not found", email)
 }
 
 func (s *PostgresStorage) UpdateUser(user *User) error {
@@ -111,6 +133,13 @@ func NewPostgresStorage() (*PostgresStorage, error) {
 
 func scanIntoUser(rows *sql.Rows) (*User, error) {
 	user := new(User)
-	err := rows.Scan(&user.ID, &user.Username, &user.CreatedAt, &user.UpdatedAt)
+	err := rows.Scan(
+		&user.ID,
+		&user.Username,
+		&user.Email,
+		&user.Password,
+		&user.CreatedAt,
+		&user.UpdatedAt,
+	)
 	return user, err
 }
